@@ -6,11 +6,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
-	"os/signal"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -23,17 +20,21 @@ type Executor interface {
 	// RegTask 注册任务
 	RegTask(pattern string, task TaskFunc)
 	// RunTask 运行任务
-	RunTask(writer http.ResponseWriter, request *http.Request)
+	RunTask(param RunReq) res
 	// KillTask 杀死任务
-	KillTask(writer http.ResponseWriter, request *http.Request)
-	// TaskLog 任务日志
-	TaskLog(writer http.ResponseWriter, request *http.Request)
+	KillTask(param killReq) res
+
+	//// TaskLog 任务日志
+	//TaskLog(writer http.ResponseWriter, request *http.Request)
+
 	// Beat 心跳检测
-	Beat(writer http.ResponseWriter, request *http.Request)
+	Beat() res
 	// IdleBeat 忙碌检测
-	IdleBeat(writer http.ResponseWriter, request *http.Request)
+	IdleBeat(param idleBeatReq) res
+
 	// Run 运行服务
-	Run() error
+	//Run() error
+
 	// Stop 停止服务
 	Stop()
 }
@@ -82,30 +83,30 @@ func (e *executor) LogHandler(handler LogHandler) {
 	e.logHandler = handler
 }
 
-func (e *executor) Run() (err error) {
-	// 创建路由器
-	mux := http.NewServeMux()
-	// 设置路由规则
-	mux.HandleFunc("/run", e.runTask)
-	mux.HandleFunc("/kill", e.killTask)
-	mux.HandleFunc("/log", e.taskLog)
-	mux.HandleFunc("/beat", e.beat)
-	mux.HandleFunc("/idleBeat", e.idleBeat)
-	// 创建服务器
-	server := &http.Server{
-		Addr:         e.address,
-		WriteTimeout: time.Second * 3,
-		Handler:      mux,
-	}
-	// 监听端口并提供服务
-	e.log.Info("Starting server at " + e.address)
-	go server.ListenAndServe()
-	quit := make(chan os.Signal)
-	signal.Notify(quit, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	e.registryRemove()
-	return nil
-}
+//func (e *executor) Run() (err error) {
+//	// 创建路由器
+//	mux := http.NewServeMux()
+//	// 设置路由规则
+//	mux.HandleFunc("/run", e.runTask)
+//	mux.HandleFunc("/kill", e.killTask)
+//	mux.HandleFunc("/log", e.taskLog)
+//	mux.HandleFunc("/beat", e.beat)
+//	mux.HandleFunc("/idleBeat", e.idleBeat)
+//	// 创建服务器
+//	server := &http.Server{
+//		Addr:         e.address,
+//		WriteTimeout: time.Second * 3,
+//		Handler:      mux,
+//	}
+//	// 监听端口并提供服务
+//	e.log.Info("Starting server at " + e.address)
+//	go server.ListenAndServe()
+//	quit := make(chan os.Signal)
+//	signal.Notify(quit, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGINT, syscall.SIGTERM)
+//	<-quit
+//	e.registryRemove()
+//	return nil
+//}
 
 func (e *executor) Stop() {
 	e.registryRemove()
@@ -119,23 +120,23 @@ func (e *executor) RegTask(pattern string, task TaskFunc) {
 	return
 }
 
-//运行一个任务
-func (e *executor) runTask(writer http.ResponseWriter, request *http.Request) {
+// RunTask 运行一个任务
+func (e *executor) RunTask(param RunReq) res {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	req, _ := ioutil.ReadAll(request.Body)
-	param := &RunReq{}
-	err := json.Unmarshal(req, &param)
-	if err != nil {
-		_, _ = writer.Write(returnCall(param, FailureCode, "params err"))
-		e.log.Error("参数解析错误:" + string(req))
-		return
-	}
+	//req, _ := ioutil.ReadAll(request.Body)
+	//param := &RunReq{}
+	//err := json.Unmarshal(req, &param)
+	//if err != nil {
+	//	_, _ = writer.Write(returnCall(param, FailureCode, "params err"))
+	//	e.log.Error("参数解析错误:" + string(req))
+	//	return
+	//}
 	e.log.Info("任务参数:%v", param)
 	if !e.regList.Exists(param.ExecutorHandler) {
-		_, _ = writer.Write(returnCall(param, FailureCode, "Task not registered"))
+		//_, _ = writer.Write(returnCall(param, FailureCode, "Task not registered"))
 		e.log.Error("任务[" + Int64ToStr(param.JobID) + "]没有注册:" + param.ExecutorHandler)
-		return
+		return returnResult(FailureCode, "Task not registered")
 	}
 
 	//阻塞策略处理
@@ -147,9 +148,9 @@ func (e *executor) runTask(writer http.ResponseWriter, request *http.Request) {
 				e.runList.Del(Int64ToStr(oldTask.Id))
 			}
 		} else { //单机串行,丢弃后续调度 都进行阻塞
-			_, _ = writer.Write(returnCall(param, FailureCode, "There are tasks running"))
+			//_, _ = writer.Write(returnCall(param, FailureCode, "There are tasks running"))
 			e.log.Error("任务[" + Int64ToStr(param.JobID) + "]已经在运行了:" + param.ExecutorHandler)
-			return
+			return returnResult(FailureCode, "There are tasks running")
 		}
 	}
 
@@ -170,78 +171,82 @@ func (e *executor) runTask(writer http.ResponseWriter, request *http.Request) {
 		e.callback(task, code, msg)
 	})
 	e.log.Info("任务[" + Int64ToStr(param.JobID) + "]开始执行:" + param.ExecutorHandler)
-	_, _ = writer.Write(returnGeneral())
+	return returnGeneral()
+	//_, _ = writer.Write(returnGeneral())
 }
 
 //删除一个任务
-func (e *executor) killTask(writer http.ResponseWriter, request *http.Request) {
+func (e *executor) killTask(param killReq) res {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	req, _ := ioutil.ReadAll(request.Body)
-	param := &killReq{}
-	_ = json.Unmarshal(req, &param)
+	//req, _ := ioutil.ReadAll(request.Body)
+	//param := &killReq{}
+	//_ = json.Unmarshal(req, &param)
 	if !e.runList.Exists(Int64ToStr(param.JobID)) {
-		_, _ = writer.Write(returnKill(param, FailureCode))
+		//_, _ = writer.Write(returnKill(param, FailureCode))
 		e.log.Error("任务[" + Int64ToStr(param.JobID) + "]没有运行")
-		return
+		return returnKill(param, FailureCode)
 	}
 	task := e.runList.Get(Int64ToStr(param.JobID))
 	task.Cancel()
 	e.runList.Del(Int64ToStr(param.JobID))
-	_, _ = writer.Write(returnGeneral())
+	//_, _ = writer.Write(returnGeneral())
+	return returnGeneral()
 }
 
 //任务日志
-func (e *executor) taskLog(writer http.ResponseWriter, request *http.Request) {
-	var res *LogRes
-	data, err := ioutil.ReadAll(request.Body)
-	req := &LogReq{}
-	if err != nil {
-		e.log.Error("日志请求失败:" + err.Error())
-		reqErrLogHandler(writer, req, err)
-		return
-	}
-	err = json.Unmarshal(data, &req)
-	if err != nil {
-		e.log.Error("日志请求解析失败:" + err.Error())
-		reqErrLogHandler(writer, req, err)
-		return
-	}
-	e.log.Info("日志请求参数:%+v", req)
-	if e.logHandler != nil {
-		res = e.logHandler(req)
-	} else {
-		res = defaultLogHandler(req)
-	}
-	str, _ := json.Marshal(res)
-	_, _ = writer.Write(str)
-}
+//func (e *executor) taskLog(writer http.ResponseWriter, request *http.Request) res {
+//	var res *LogRes
+//	data, err := ioutil.ReadAll(request.Body)
+//	req := &LogReq{}
+//	if err != nil {
+//		e.log.Error("日志请求失败:" + err.Error())
+//		reqErrLogHandler(writer, req, err)
+//		return
+//	}
+//	err = json.Unmarshal(data, &req)
+//	if err != nil {
+//		e.log.Error("日志请求解析失败:" + err.Error())
+//		reqErrLogHandler(writer, req, err)
+//		return
+//	}
+//	e.log.Info("日志请求参数:%+v", req)
+//	if e.logHandler != nil {
+//		res = e.logHandler(req)
+//	} else {
+//		res = defaultLogHandler(req)
+//	}
+//	str, _ := json.Marshal(res)
+//	_, _ = writer.Write(str)
+//}
 
 // 心跳检测
-func (e *executor) beat(writer http.ResponseWriter, request *http.Request) {
+func (e *executor) beat() res {
 	e.log.Info("心跳检测")
-	_, _ = writer.Write(returnGeneral())
+	//_, _ = writer.Write(returnGeneral())
+	return returnGeneral()
 }
 
 // 忙碌检测
-func (e *executor) idleBeat(writer http.ResponseWriter, request *http.Request) {
+func (e *executor) idleBeat(param idleBeatReq) res {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	req, _ := ioutil.ReadAll(request.Body)
-	param := &idleBeatReq{}
-	err := json.Unmarshal(req, &param)
-	if err != nil {
-		_, _ = writer.Write(returnIdleBeat(FailureCode))
-		e.log.Error("参数解析错误:" + string(req))
-		return
-	}
+	//req, _ := ioutil.ReadAll(request.Body)
+	//param := &idleBeatReq{}
+	//err := json.Unmarshal(req, &param)
+	//if err != nil {
+	//	_, _ = writer.Write(returnIdleBeat(FailureCode))
+	//	e.log.Error("参数解析错误:" + string(req))
+	//	return
+	//}
 	if e.runList.Exists(Int64ToStr(param.JobID)) {
-		_, _ = writer.Write(returnIdleBeat(FailureCode))
+		//_, _ = writer.Write(returnIdleBeat(FailureCode))
 		e.log.Error("idleBeat任务[" + Int64ToStr(param.JobID) + "]正在运行")
-		return
+		return returnIdleBeat(FailureCode)
 	}
 	e.log.Info("忙碌检测任务参数:%v", param)
-	_, _ = writer.Write(returnGeneral())
+	//_, _ = writer.Write(returnGeneral())
+	return returnGeneral()
 }
 
 //注册执行器到调度中心
@@ -339,27 +344,22 @@ func (e *executor) post(action, body string) (resp *http.Response, err error) {
 	return client.Do(request)
 }
 
-// RunTask 运行任务
-func (e *executor) RunTask(writer http.ResponseWriter, request *http.Request) {
-	e.runTask(writer, request)
-}
-
 // KillTask 删除任务
-func (e *executor) KillTask(writer http.ResponseWriter, request *http.Request) {
-	e.killTask(writer, request)
+func (e *executor) KillTask(param killReq) res {
+	return e.killTask(param)
 }
 
 // TaskLog 任务日志
 func (e *executor) TaskLog(writer http.ResponseWriter, request *http.Request) {
-	e.taskLog(writer, request)
+	//e.taskLog(writer, request)
 }
 
 // Beat 心跳检测
-func (e *executor) Beat(writer http.ResponseWriter, request *http.Request) {
-	e.beat(writer, request)
+func (e *executor) Beat() res {
+	return e.beat()
 }
 
 // IdleBeat 忙碌检测
-func (e *executor) IdleBeat(writer http.ResponseWriter, request *http.Request) {
-	e.idleBeat(writer, request)
+func (e *executor) IdleBeat(param idleBeatReq) res {
+	return e.idleBeat(param)
 }

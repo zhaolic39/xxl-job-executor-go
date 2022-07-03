@@ -7,14 +7,14 @@ import (
 )
 
 // TaskFunc 任务执行函数
-type TaskFunc func(cxt context.Context, param *RunReq) string
+type TaskFunc func(cxt context.Context, param RunReq) string
 
 // Task 任务
 type Task struct {
 	Id        int64
 	Name      string
 	Ext       context.Context
-	Param     *RunReq
+	Param     RunReq
 	fn        TaskFunc
 	Cancel    context.CancelFunc
 	StartTime int64

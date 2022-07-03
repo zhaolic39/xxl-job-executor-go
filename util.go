@@ -11,7 +11,11 @@ func Int64ToStr(i int64) string {
 }
 
 //执行任务回调
-func returnCall(req *RunReq, code int64, msg string) []byte {
+func returnCall(req RunReq, code int64, msg string) []byte {
+	//return res{
+	//	Code: code,
+	//	Msg:  msg,
+	//}
 	data := call{
 		&callElement{
 			LogID:      req.LogID,
@@ -29,7 +33,7 @@ func returnCall(req *RunReq, code int64, msg string) []byte {
 }
 
 //杀死任务返回
-func returnKill(req *killReq, code int64) []byte {
+func returnKill(req killReq, code int64) res {
 	msg := ""
 	if code != SuccessCode {
 		msg = "Task kill err"
@@ -38,12 +42,13 @@ func returnKill(req *killReq, code int64) []byte {
 		Code: code,
 		Msg:  msg,
 	}
-	str, _ := json.Marshal(data)
-	return str
+	return data
+	//str, _ := json.Marshal(data)
+	//return str
 }
 
 //忙碌返回
-func returnIdleBeat(code int64) []byte {
+func returnIdleBeat(code int64) res {
 	msg := ""
 	if code != SuccessCode {
 		msg = "Task is busy"
@@ -52,16 +57,24 @@ func returnIdleBeat(code int64) []byte {
 		Code: code,
 		Msg:  msg,
 	}
-	str, _ := json.Marshal(data)
-	return str
+	return data
+	//str, _ := json.Marshal(data)
+	//return str
 }
 
 //通用返回
-func returnGeneral() []byte {
-	data := &res{
+func returnGeneral() res {
+	return res{
 		Code: SuccessCode,
 		Msg:  "",
 	}
-	str, _ := json.Marshal(data)
-	return str
+	//str, _ := json.Marshal(data)
+	//return str
+}
+
+func returnResult(code int64, msg string) res {
+	return res{
+		Code: code,
+		Msg:  msg,
+	}
 }

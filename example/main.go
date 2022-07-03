@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
-	xxl "github.com/xxl-job/xxl-job-executor-go"
-	"github.com/xxl-job/xxl-job-executor-go/example/task"
+	xxl "github.com/zhaolic39/xxl-job-executor-go"
+	"github.com/zhaolic39/xxl-job-executor-go/example/task"
 	"log"
 )
 
 func main() {
 	exec := xxl.NewExecutor(
-		xxl.ServerAddr("http://127.0.0.1/xxl-job-admin"),
+		xxl.ServerAddr("https://doctor.isuncare.cn/xxl"),
 		xxl.AccessToken(""),            //请求令牌(默认为空)
 		xxl.ExecutorIp("127.0.0.1"),    //可自动获取
 		xxl.ExecutorPort("9999"),       //默认9999（非必填）
@@ -30,7 +30,11 @@ func main() {
 	exec.RegTask("task.test", task.Test)
 	exec.RegTask("task.test2", task.Test2)
 	exec.RegTask("task.panic", task.Panic)
-	log.Fatal(exec.Run())
+
+	server := xxl.Standalone{Exec: &exec, ExecutorIp: "127.0.0.1", ExecutorPort: "9999"}
+	server.Run()
+
+	//log.Fatal(exec.Run())
 }
 
 //xxl.Logger接口实现
