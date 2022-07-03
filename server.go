@@ -3,7 +3,6 @@ package xxl
 import (
 	"encoding/json"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"time"
 )
@@ -17,6 +16,7 @@ type Standalone struct {
 	ExecutorIp   string
 	ExecutorPort string
 	Exec         *Executor
+	Log          Logger //日志处理
 }
 
 func (e *Standalone) Run() error {
@@ -37,7 +37,7 @@ func (e *Standalone) Run() error {
 		Handler:      mux,
 	}
 	// 监听端口并提供服务
-	log.Println("Starting server at ")
+	e.Log.Info("Starting server at %s", address)
 	go server.ListenAndServe()
 	//quit := make(chan os.Signal)
 	//signal.Notify(quit, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGINT, syscall.SIGTERM)

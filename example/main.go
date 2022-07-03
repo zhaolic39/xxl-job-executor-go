@@ -31,7 +31,12 @@ func main() {
 	exec.RegTask("task.test2", task.Test2)
 	exec.RegTask("task.panic", task.Panic)
 
-	server := xxl.Standalone{Exec: &exec, ExecutorIp: "127.0.0.1", ExecutorPort: "9999"}
+	server := xxl.Standalone{
+		Exec:         &exec,
+		ExecutorIp:   "127.0.0.1",
+		ExecutorPort: "9999",
+		Log:          &logger{},
+	}
 	server.Run()
 
 	//log.Fatal(exec.Run())
